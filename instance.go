@@ -69,6 +69,7 @@ func (inst *instance) init(blk *bcpb.Block, txs []*bcpb.Tx) {
 	inst.state = stateInit
 	inst.block = blk
 	inst.txs = txs
+
 	inst.commits = make([]uint8, len(blk.Header.Signers))
 }
 

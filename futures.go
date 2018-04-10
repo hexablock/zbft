@@ -1,6 +1,7 @@
 package zbft
 
 import (
+	"encoding/binary"
 	"errors"
 	"sync"
 	"time"
@@ -188,21 +189,21 @@ func (f *futures) setTxsExec(root bcpb.Digest, err error) {
 }
 
 func (f *futures) txInputsRoot(txs []*bcpb.Tx) bcpb.Digest {
-	list := make([]bcpb.Digest, 0)
-
-	for i := range txs {
-		for j := range txs[i].Inputs {
-			sh := txs[i].Inputs[j].Hash(f.h)
-			list = append(list, sh)
-		}
-	}
 
 	h := f.h.New()
-	for i := range list {
-		h.Write(list[i])
-	}
-	sh := h.Sum(nil)
+	for i := range txs {
+		// Write tx timestamp
+		binary.Write(h, binary.BigEndian, txs[i].Header.Timestamp)
 
+		// Write each input hash
+		for j := range txs[i].Inputs {
+			sh := txs[i].Inputs[j].Hash(f.h)
+			h.Write(sh)
+		}
+
+	}
+
+	sh := h.Sum(nil)
 	return bcpb.NewDigest(f.h.Name(), sh)
 }
 

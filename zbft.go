@@ -51,10 +51,9 @@ func New(bc *blockchain.Blockchain, fsm FSM, kp *keypair.KeyPair, logger *log.Lo
 		kp:        kp,
 		msgBcast:  make(chan zbftpb.Message, 16),
 		msgIn:     make(chan zbftpb.Message, 16),
-		txPrepare: make(chan []*bcpb.Tx, 16),
 		txCollect: make(chan []*bcpb.Tx, 16),
-		lib:       fsm,
 		exec:      make(chan *execBlock, 16),
+		fsm:       fsm,
 		log:       logger,
 	}
 
@@ -63,7 +62,7 @@ func New(bc *blockchain.Blockchain, fsm FSM, kp *keypair.KeyPair, logger *log.Lo
 	z.init()
 
 	// Initialize contract library
-	z.lib.Init(z.bc)
+	z.fsm.Init(z.bc)
 
 	return z
 }
@@ -94,7 +93,7 @@ func (z *zbft) Step(msg zbftpb.Message) {
 
 func (z *zbft) ProposeTxs(txs []*bcpb.Tx) *Future {
 	fut := z.futs.addTxsActive(txs)
-	z.txPrepare <- txs
+	z.txCollect <- txs
 	return fut
 }
 
@@ -108,7 +107,6 @@ func (z *zbft) BroadcastMessages() <-chan zbftpb.Message {
 // on initialization to allow loading of contract library before starting,
 func (z *zbft) Start() {
 
-	go z.startPreparing()
 	go z.startExecing()
 
 	for {

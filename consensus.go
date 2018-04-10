@@ -49,7 +49,7 @@ type zbft struct {
 
 	// Transactions that need to be prepared i.e. txos need to be produced
 	// which are then passed to txCollect
-	txPrepare chan []*bcpb.Tx
+	//txPrepare chan []*bcpb.Tx
 
 	// Channel of txs ready to be added to a block.  These are txs from txPrepare
 	// This is where txs are collected before being added to a block.
@@ -61,7 +61,7 @@ type zbft struct {
 	txq chan []*bcpb.Tx
 
 	// Contract library
-	lib FSM
+	fsm FSM
 
 	// Blocks and associated txs available to execute
 	exec chan *execBlock
@@ -89,67 +89,12 @@ func (z *zbft) init() {
 	z.timeout.Stop()
 }
 
-func (z *zbft) startPreparing() {
-	for txs := range z.txPrepare {
-		// Input root
-		txiroot := z.futs.txInputsRoot(txs)
-
-		// Prepare i.e. compute outputs
-		err := z.lib.Prepare(txs)
-		if err != nil {
-			z.futs.setTxsRatified(txiroot, err)
-			continue
-		}
-
-		// Compute final digest before submitting
-		//txids := make(bcpb.Digests, len(txs))
-		for i := range txs {
-			txs[i].SetDigest(z.hasher)
-			//txids[i] = txs[i].Digest
-		}
-
-		// Sign tx root
-		// txroot, _ := txids.Root()
-		// sig, err := z.kp.Sign(txroot)
-		// if err != nil {
-		// 	z.futs.setTxsRatified(txiroot, err)
-		// 	continue
-		// }
-
-		// Set txs in futures
-		z.futs.setTxs(txiroot, txs)
-
-		// p := newPrepare(4)
-		// p.root = txroot
-		// p.txs = txs
-		// z.pt.add(p)
-
-		// Send tx's to be added to a block
-		z.txCollect <- txs
-
-		// INPROGRESS
-		// msg := zbftpb.Message{
-		// 	Type: zbftpb.Message_PREPARE,
-		// 	Txs:  txs,
-		// 	Block: &bcpb.Block{
-		// 		Header: &bcpb.BlockHeader{
-		// 			Root:    txroot,
-		// 			Signers: []bcpb.PublicKey{z.kp.PublicKey},
-		// 		},
-		// 		Signatures: [][]byte{sig},
-		// 	},
-		// }
-		//
-		// z.broadcast(msg)
-	}
-}
-
 func (z *zbft) startExecing() {
 	var err error
 	for eb := range z.exec {
 
 		// The error is bubbled up via the future
-		err = z.lib.Execute(eb.txs, eb.block.Header, eb.leader)
+		err = z.fsm.Execute(eb.txs, eb.block.Header, eb.leader)
 		if eb.leader {
 			root := z.futs.txInputsRoot(eb.txs)
 			z.futs.setTxsExec(root, err)
@@ -181,9 +126,6 @@ func (z *zbft) handleReadyTxs(txs []*bcpb.Tx) {
 	next.SetSigners(last.Header.Signers...)
 	next.SetProposer(z.kp.PublicKey)
 
-	next.SetTxs(txs, z.hasher)
-	next.SetHash(z.hasher)
-
 	pmsg := zbftpb.Message{
 		Type:  zbftpb.Message_PROPOSAL,
 		Block: next,
@@ -204,9 +146,6 @@ func (z *zbft) handleMessage(msg zbftpb.Message) error {
 
 	case zbftpb.Message_BOOTSTRAP:
 		err = z.handleBootstrap(msg)
-
-	//case zbftpb.Message_PREPARE:
-	//	err = z.handlePrepare(msg)
 
 	case zbftpb.Message_PROPOSAL:
 		err = z.handleProposal(msg)
@@ -229,20 +168,6 @@ func (z *zbft) handleMessage(msg zbftpb.Message) error {
 	return err
 }
 
-// func (z *zbft) handlePrepare(msg zbftpb.Message) error {
-// 	root := msg.Block.Header.Root
-// 	sig := msg.Block.Signatures[0]
-//
-// 	kp := keypair.New(elliptic.P256(), z.hasher)
-// 	kp.PublicKey = msg.Block.Header.Signers[0]
-//
-// 	if kp.VerifySignature(root, sig) {
-// 		return z.pt.sign(root, kp.PublicKey)
-// 	}
-//
-// 	return bcpb.ErrSignatureVerificationFailed
-// }
-
 func (z *zbft) handleProposal(msg zbftpb.Message) error {
 	if z.inst.state != stateInit {
 		return fmt.Errorf("cannot propose block in state=%v", z.inst.state)
@@ -254,9 +179,9 @@ func (z *zbft) handleProposal(msg zbftpb.Message) error {
 		return blockchain.ErrPrevBlockMismatch
 	}
 
-	// if err := z.lib.Prepare(msg.Txs); err != nil {
-	// 	return err
-	// }
+	if err := z.fsm.Prepare(msg.Txs); err != nil {
+		return err
+	}
 
 	// Instantiate voting instance
 	z.initRound(msg.Block, msg.Txs)
@@ -275,6 +200,7 @@ func (z *zbft) handleSignature(msg zbftpb.Message) error {
 	if z.inst.state < stateSigning {
 		return fmt.Errorf("cannot sign block in state=%v", z.inst.state)
 	}
+
 	// Make sure the same block is being ratified as the one in the request
 	blk := msg.Block
 	if !blk.Digest.Equal(z.inst.block.Digest) {
@@ -285,8 +211,10 @@ func (z *zbft) handleSignature(msg zbftpb.Message) error {
 	signature := blk.Signatures[0]
 
 	err := z.inst.sign(signer, signature)
-	z.log.Debugf("[%x] Signed signer=%x sig=%x len=%d count=%d err='%v'",
-		z.kp.PublicKey[:8], signer[:8], signature[:8], len(signature), z.inst.block.SignatureCount(), err)
+
+	z.log.Debugf("[%x] Signed: signer=%x sig=%x len=%d count=%d err='%v'",
+		z.kp.PublicKey[:8], signer[:8], signature[:8], len(signature),
+		z.inst.block.SignatureCount(), err)
 
 	return err
 }
@@ -324,7 +252,7 @@ func (z *zbft) onSignEnter(digest bcpb.Digest, pk bcpb.PublicKey, signature []by
 
 // persist block and broadcast
 func (z *zbft) onCommitEnter(blk *bcpb.Block, txs []*bcpb.Tx) error {
-	z.log.Debugf("Committing %s", blk.Digest)
+	z.log.Debugf("Committing: %s", blk.Digest)
 	// Persist the block but do not update the last block reference yet
 	_, err := z.bc.Append(blk, txs)
 	if err == nil {
@@ -340,7 +268,7 @@ func (z *zbft) isRoundLeader() bool {
 
 // commit the last block in the ledger
 func (z *zbft) onRatified(blk *bcpb.Block, txs []*bcpb.Tx) error {
-	z.log.Debugf("Block ratified: %v", blk.Digest)
+	z.log.Debugf("Ratified: %v", blk.Digest)
 
 	// Update last block reference
 	err := z.bc.Commit(blk.Digest)
@@ -370,6 +298,10 @@ func (z *zbft) initRound(blk *bcpb.Block, txs []*bcpb.Tx) {
 	// Disable transaction q.  Cause channel to block
 	z.txq = nil
 
+	// Compute based on what was provided.
+	blk.SetTxs(txs, z.hasher)
+	blk.SetHash(z.hasher)
+
 	// Instantiate voting instance
 	z.inst.init(blk, txs)
 
@@ -394,7 +326,7 @@ func (z *zbft) voteCommitAndBroadcast(blk *bcpb.Block, txs []*bcpb.Tx) error {
 	if err != nil {
 		return err
 	}
-	z.log.Debugf("Block committed: %v", blk.Digest)
+	z.log.Debugf("Committed: %v", blk.Digest)
 
 	// Broadcast that we have persisted
 	z.broadcast(zbftpb.Message{
