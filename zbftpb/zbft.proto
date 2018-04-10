@@ -1,0 +1,31 @@
+syntax = "proto3";
+
+package zbftpb;
+
+option go_package = "github.com/hexablock/zbft/zbftpb";
+
+import "github.com/gogo/protobuf/gogoproto/gogo.proto";
+import "github.com/hexablock/blockchain/bcpb/types.proto";
+
+// All fields except type are optional and used based on context
+message Message {
+    enum Type {
+        BOOTSTRAP = 0; // Request to bootstrap a new ledger
+        //PREPARE = 1;   // Prepare transaction/s
+        PROPOSAL = 2;  // New block proposal
+        SIGNATURE = 3; // Request announcing block signed
+        PERSIST = 4;   // Block has been persisted
+    }
+
+    // Type of message
+    Type type = 1;
+
+    // Block in question
+    bcpb.Block block = 2;
+
+    // Entity who sent the message where applicable
+    bytes from = 3 [(gogoproto.casttype) = "bcpb.PublicKey"];
+
+    // Tx's part of the block that are in question
+    repeated bcpb.Tx txs = 4;
+}
