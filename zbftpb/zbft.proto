@@ -10,11 +10,12 @@ import "github.com/hexablock/blockchain/bcpb/types.proto";
 // All fields except type are optional and used based on context
 message Message {
     enum Type {
-        BOOTSTRAP = 0; // Request to bootstrap a new ledger
-        //PREPARE = 1;   // Prepare transaction/s
-        PROPOSAL = 2;  // New block proposal
-        SIGNATURE = 3; // Request announcing block signed
-        PERSIST = 4;   // Block has been persisted
+        NONE = 0;
+        BOOTSTRAP = 1; // Request to bootstrap a new ledger
+        // REQUEST = 2;   // User request
+        PROPOSAL = 3;  // New block proposal
+        SIGNATURE = 4; // Request announcing block signed
+        PERSIST = 5;   // Block has been persisted
     }
 
     // Type of message

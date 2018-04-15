@@ -21,7 +21,7 @@ func (z *zbft) handleBootstrap(msg zbftpb.Message) error {
 	z.inst.onCommitEnter = z.onCommitEnterBootstrap
 	z.inst.onRatified = z.onRatifiedBootstrap
 
-	z.log.Debug("Bootstrapping...")
+	z.log.Debugf("[%x] Bootstrapping...", z.kp.PublicKey[:8])
 
 	// Instantiate voting instance
 	z.initRound(msg.Block, msg.Txs)

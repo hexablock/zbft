@@ -47,6 +47,40 @@ func Test_zbft_errors(t *testing.T) {
 
 }
 
+func Test_Zbft_Genesis(t *testing.T) {
+	tc := newTestCluster(4)
+	go tc.start()
+
+	h := hasher.Default()
+
+	tx := bcpb.NewBaseTx(tc.pubkeys()...)
+	tx.AddOutput(&bcpb.TxOutput{DataKey: bcpb.DataKey("ledger:test")})
+	txs := []*bcpb.Tx{tx}
+
+	gnss := blockchain.NewGenesisBlock(h)
+
+	gnss.Header.N = 4
+	gnss.Header.S = 4
+	gnss.Header.Q = 4
+	gnss.SetSigners(tc.pubkeys()...)
+	gnss.SetProposer(tc[0].kp.PublicKey)
+	gnss.SetTxs(txs, h)
+	gnss.SetHash(h)
+
+	bfut := tc[0].SetGenesis(gnss, txs)
+	assert.NotNil(t, bfut)
+
+	//<-time.After(1 * time.Second)
+	err := bfut.Executed(1 * time.Second)
+	assert.Nil(t, err)
+
+	// Check genesis
+	for _, n := range tc {
+		last := n.bc.Last()
+		assert.Equal(t, gnss.Digest, last.Digest)
+	}
+}
+
 func Test_Zbft_cluster(t *testing.T) {
 	tc := newTestCluster(4)
 	go tc.start()
@@ -135,4 +169,8 @@ func Test_Zbft_cluster(t *testing.T) {
 	err = tc[0].handleBootstrap(emsg)
 	assert.Contains(t, err.Error(), "already bootstrapped")
 
+	timeout := 5 * time.Second
+	tc[1].SetTimeout(timeout)
+	<-time.After(300 * time.Millisecond)
+	assert.Equal(t, timeout, tc[1].roundTimeout)
 }

@@ -1,6 +1,8 @@
 package zbft
 
 import (
+	"time"
+
 	"github.com/hexablock/blockchain"
 	"github.com/hexablock/blockchain/bcpb"
 	"github.com/hexablock/blockchain/keypair"
@@ -11,6 +13,7 @@ import (
 
 // TxStore implements a transaction store for read-only purposes
 type TxStore interface {
+	// Returns the output associated to the given input
 	GetTXO(txi *bcpb.TxInput) (*bcpb.TxOutput, error)
 }
 
@@ -34,6 +37,8 @@ type ZBFT interface {
 	SetGenesis(blk *bcpb.Block, txs []*bcpb.Tx) *Future
 	// Submits message to consensus algo
 	Step(msg zbftpb.Message)
+	// SetTimeout sets the timeout for a given consensus round
+	SetTimeout(d time.Duration)
 	// ProposeTxs proposes Transactions to the ledger.  They are first prepared,
 	// added to a block then proposes to be added to the ledger
 	ProposeTxs(txs []*bcpb.Tx) *Future
@@ -46,15 +51,17 @@ type ZBFT interface {
 // and a keypair as  arguments
 func New(bc *blockchain.Blockchain, fsm FSM, kp *keypair.KeyPair, logger *log.Logger) ZBFT {
 	z := &zbft{
-		bc:        bc,
-		hasher:    bc.Hasher().Clone(),
-		kp:        kp,
-		msgBcast:  make(chan zbftpb.Message, 16),
-		msgIn:     make(chan zbftpb.Message, 16),
-		txCollect: make(chan []*bcpb.Tx, 16),
-		exec:      make(chan *execBlock, 16),
-		fsm:       fsm,
-		log:       logger,
+		bc:           bc,
+		hasher:       bc.Hasher().Clone(),
+		kp:           kp,
+		roundTimeout: defaultRoundTimeout,
+		msgBcast:     make(chan zbftpb.Message, 16),
+		msgIn:        make(chan zbftpb.Message, 16),
+		txCollect:    make(chan []*bcpb.Tx, 16),
+		exec:         make(chan *execBlock, 16),
+		confCh:       make(chan configChange, 8),
+		fsm:          fsm,
+		log:          logger,
 	}
 
 	z.bc.SetBlockValidator(defaultBlockValidator)
@@ -65,6 +72,10 @@ func New(bc *blockchain.Blockchain, fsm FSM, kp *keypair.KeyPair, logger *log.Lo
 	z.fsm.Init(z.bc)
 
 	return z
+}
+
+func (z *zbft) SetTimeout(d time.Duration) {
+	z.confCh <- configChange{typ: confChangeTimeout, data: d}
 }
 
 // SetGenesis broadcasts the given block to the network to bootstrap the ledger.
@@ -119,8 +130,12 @@ func (z *zbft) Start() {
 		case msg := <-z.msgIn:
 			z.handleMessage(msg)
 
-		case <-z.timeout.C:
+		case <-z.timer.C:
 			z.handleTimeout()
+
+		case cch := <-z.confCh:
+			z.handleConfigChange(cch)
+
 		}
 
 	}

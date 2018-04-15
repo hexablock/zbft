@@ -19,10 +19,23 @@ var (
 	errInvalidBlockDigest = errors.New("invalid block digest")
 )
 
+const (
+	defaultRoundTimeout = 3 * time.Second
+)
+
+const (
+	confChangeTimeout = iota + 1
+)
+
 type execBlock struct {
 	leader bool
 	block  *bcpb.Block
 	txs    []*bcpb.Tx
+}
+
+type configChange struct {
+	typ  uint8
+	data interface{}
 }
 
 type zbft struct {
@@ -36,8 +49,10 @@ type zbft struct {
 
 	// Current active block being ratified
 	inst *instance
-	// timeout for current active instance
-	timeout *time.Timer
+	// Timer for current active instance
+	timer *time.Timer
+	// Timer timeout for round
+	roundTimeout time.Duration
 
 	// Channel with messages to be broadcasted to network
 	msgBcast chan zbftpb.Message
@@ -66,6 +81,8 @@ type zbft struct {
 	// Blocks and associated txs available to execute
 	exec chan *execBlock
 
+	confCh chan configChange
+
 	// All active transactions
 	futs *futures
 }
@@ -85,8 +102,8 @@ func (z *zbft) init() {
 	z.inst = inst
 
 	// Timer setup
-	z.timeout = time.NewTimer(3 * time.Second)
-	z.timeout.Stop()
+	z.timer = time.NewTimer(z.roundTimeout)
+	z.timer.Stop()
 }
 
 func (z *zbft) startExecing() {
@@ -212,9 +229,8 @@ func (z *zbft) handleSignature(msg zbftpb.Message) error {
 
 	err := z.inst.sign(signer, signature)
 
-	z.log.Debugf("[%x] Signed: signer=%x sig=%x len=%d count=%d err='%v'",
-		z.kp.PublicKey[:8], signer[:8], signature[:8], len(signature),
-		z.inst.block.SignatureCount(), err)
+	z.log.Debugf("[%x] Signed: signer=%x sig=%x err='%v'",
+		z.kp.PublicKey[:8], signer[:8], signature[:8], err)
 
 	return err
 }
@@ -233,6 +249,34 @@ func (z *zbft) handleTimeout() {
 		z.futs.setTxsRatified(root, errTimedOut)
 	}
 	z.resetRound()
+}
+
+func (z *zbft) handleConfigChange(cch configChange) {
+	if z.inst.state != stateInit {
+		z.log.Debugf("Rescheduling config change state=%s type=%s", z.inst.state, cch.typ)
+		z.confCh <- cch
+		return
+	}
+
+	switch cch.typ {
+
+	case confChangeTimeout:
+		z.handleSetTimeout(cch.data)
+
+	default:
+		z.log.Errorf("Unknown config change type: %d", cch.typ)
+
+	}
+}
+
+func (z *zbft) handleSetTimeout(data interface{}) {
+	d, ok := data.(time.Duration)
+	if ok {
+		z.roundTimeout = d
+		return
+	}
+
+	z.log.Errorf("Wrong timeout type: %v", data)
 }
 
 // called when the node goes into signing stage.  Used by bootstrap as well
@@ -306,7 +350,7 @@ func (z *zbft) initRound(blk *bcpb.Block, txs []*bcpb.Tx) {
 	z.inst.init(blk, txs)
 
 	// Start timer for the round
-	z.timeout.Reset(3 * time.Second)
+	z.timer.Reset(z.roundTimeout)
 }
 
 func (z *zbft) resetRound() {
@@ -314,7 +358,7 @@ func (z *zbft) resetRound() {
 	z.inst.reset()
 
 	// stop timeout timer
-	z.timeout.Stop()
+	z.timer.Stop()
 
 	// Enable transaction q.  Unblocks assuming new txs are available
 	z.txq = z.txCollect
