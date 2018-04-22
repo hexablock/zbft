@@ -197,6 +197,8 @@ func (z *zbft) handleProposal(msg zbftpb.Message) error {
 	}
 
 	if err := z.fsm.Prepare(msg.Txs); err != nil {
+		root := z.futs.txInputsRoot(msg.Txs)
+		z.futs.setTxsRatified(root, err)
 		return err
 	}
 
@@ -238,6 +240,7 @@ func (z *zbft) handleSignature(msg zbftpb.Message) error {
 func (z *zbft) handlePersist(msg zbftpb.Message) error {
 	blk := msg.Block
 	if blk.Digest.Equal(z.inst.block.Digest) {
+		// TODO: close future
 		return z.inst.commit(msg.From)
 	}
 	return errInvalidBlockDigest
@@ -253,7 +256,7 @@ func (z *zbft) handleTimeout() {
 
 func (z *zbft) handleConfigChange(cch configChange) {
 	if z.inst.state != stateInit {
-		z.log.Debugf("Rescheduling config change state=%s type=%s", z.inst.state, cch.typ)
+		z.log.Debugf("Rescheduling config change state=%s type=%d", z.inst.state, cch.typ)
 		z.confCh <- cch
 		return
 	}

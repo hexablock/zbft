@@ -74,6 +74,7 @@ func New(bc *blockchain.Blockchain, fsm FSM, kp *keypair.KeyPair, logger *log.Lo
 	return z
 }
 
+// SetTimeout sets the timeout period for a consensus round
 func (z *zbft) SetTimeout(d time.Duration) {
 	z.confCh <- configChange{typ: confChangeTimeout, data: d}
 }

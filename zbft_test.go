@@ -131,7 +131,7 @@ func Test_Zbft_cluster(t *testing.T) {
 		txs1 := []*bcpb.Tx{tx1}
 
 		fut := tc[0].ProposeTxs(txs1)
-		err = fut.Ratified(2 * time.Second)
+		err = fut.Ratified(3 * time.Second)
 		assert.Nil(t, err)
 
 		for _, n := range tc {
