@@ -27,6 +27,21 @@ type FSM interface {
 	Execute(txs []*bcpb.Tx, block *bcpb.BlockHeader, leader bool) error
 }
 
+// Config is the configuration used to initialize a ZBFT instance
+type Config struct {
+	// Key pair for the node
+	KeyPair *keypair.KeyPair
+
+	// Blockchain instance
+	Blockchain *blockchain.Blockchain
+
+	// Finite state machine for the blockchain
+	FSM FSM
+
+	// Logger
+	Logger *log.Logger
+}
+
 // ZBFT is the interface used by the user to interact with the consensus
 // alogrithm to perform ops against it
 type ZBFT interface {
@@ -49,19 +64,19 @@ type ZBFT interface {
 
 // New instantiates a new zbft instance. It takes a blockchain, finite-state-machine
 // and a keypair as  arguments
-func New(bc *blockchain.Blockchain, fsm FSM, kp *keypair.KeyPair, logger *log.Logger) ZBFT {
+func New(conf *Config) ZBFT {
 	z := &zbft{
-		bc:           bc,
-		hasher:       bc.Hasher().Clone(),
-		kp:           kp,
+		bc:           conf.Blockchain,
+		hasher:       conf.Blockchain.Hasher().Clone(),
+		kp:           conf.KeyPair,
 		roundTimeout: defaultRoundTimeout,
 		msgBcast:     make(chan zbftpb.Message, 16),
 		msgIn:        make(chan zbftpb.Message, 16),
 		txCollect:    make(chan []*bcpb.Tx, 16),
 		exec:         make(chan *execBlock, 16),
 		confCh:       make(chan configChange, 8),
-		fsm:          fsm,
-		log:          logger,
+		fsm:          conf.FSM,
+		log:          conf.Logger,
 	}
 
 	z.bc.SetBlockValidator(defaultBlockValidator)

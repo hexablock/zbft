@@ -114,7 +114,13 @@ func newTestZbft() *testZbft {
 	conf := testConf(db, "zbft-test/")
 
 	bc := blockchain.New(conf.Config)
-	z := New(bc, conf.FSM, conf.KeyPair, conf.Logger)
+	zconf := &Config{
+		conf.KeyPair,
+		bc,
+		conf.FSM,
+		conf.Logger,
+	}
+	z := New(zconf)
 
 	return &testZbft{tmpdir, z.(*zbft)}
 }
