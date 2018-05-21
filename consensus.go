@@ -246,10 +246,10 @@ func (z *zbft) handlePersist(msg zbftpb.Message) error {
 	return errInvalidBlockDigest
 }
 
-func (z *zbft) handleTimeout() {
+func (z *zbft) handleErrorAndReset(err error) {
 	if z.isRoundLeader() {
 		root := z.futs.txInputsRoot(z.inst.txs)
-		z.futs.setTxsRatified(root, errTimedOut)
+		z.futs.setTxsRatified(root, err)
 	}
 	z.resetRound()
 }
@@ -300,10 +300,22 @@ func (z *zbft) onSignEnter(digest bcpb.Digest, pk bcpb.PublicKey, signature []by
 // persist block and broadcast
 func (z *zbft) onCommitEnter(blk *bcpb.Block, txs []*bcpb.Tx) error {
 	z.log.Debugf("Committing: %s", blk.Digest)
+
 	// Persist the block but do not update the last block reference yet
 	_, err := z.bc.Append(blk, txs)
-	if err == nil {
+
+	switch err {
+
+	case nil:
 		err = z.voteCommitAndBroadcast(blk, txs)
+
+	case bcpb.ErrSignerNotInBlock, bcpb.ErrSignerAlreadySigned:
+		// We ignore the above 2 errors as these should not interfere
+		// with the voting process
+
+	default:
+		// TODO: close
+		z.handleErrorAndReset(err)
 	}
 
 	return err

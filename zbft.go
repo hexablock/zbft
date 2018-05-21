@@ -147,7 +147,7 @@ func (z *zbft) Start() {
 			z.handleMessage(msg)
 
 		case <-z.timer.C:
-			z.handleTimeout()
+			z.handleErrorAndReset(errTimedOut)
 
 		case cch := <-z.confCh:
 			z.handleConfigChange(cch)
