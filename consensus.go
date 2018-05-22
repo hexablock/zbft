@@ -325,7 +325,7 @@ func (z *zbft) isRoundLeader() bool {
 	return z.kp.PublicKey.Equal(z.inst.block.Header.Proposer())
 }
 
-// commit the last block in the ledger
+// Block is persisted.  Commit the last block in the ledger
 func (z *zbft) onRatified(blk *bcpb.Block, txs []*bcpb.Tx) error {
 	z.log.Debugf("Ratified: %v", blk.Digest)
 
@@ -353,6 +353,7 @@ func (z *zbft) onRatified(blk *bcpb.Block, txs []*bcpb.Tx) error {
 	return err
 }
 
+// initRound is called to initialize a new votinging round
 func (z *zbft) initRound(blk *bcpb.Block, txs []*bcpb.Tx) {
 	// Disable transaction q.  Cause channel to block
 	z.txq = nil
@@ -382,20 +383,20 @@ func (z *zbft) resetRound() {
 func (z *zbft) voteCommitAndBroadcast(blk *bcpb.Block, txs []*bcpb.Tx) error {
 	// Mark we have committed to disk
 	err := z.inst.commit(z.kp.PublicKey)
-	if err != nil {
-		return err
+	if err == nil {
+
+		z.log.Debugf("Committed: %v", blk.Digest)
+		// Broadcast that we have persisted
+		z.broadcast(zbftpb.Message{
+			Type:  zbftpb.Message_PERSIST,
+			Block: blk,
+			Txs:   txs,
+			From:  z.kp.PublicKey,
+		})
+
 	}
-	z.log.Debugf("Committed: %v", blk.Digest)
 
-	// Broadcast that we have persisted
-	z.broadcast(zbftpb.Message{
-		Type:  zbftpb.Message_PERSIST,
-		Block: blk,
-		Txs:   txs,
-		From:  z.kp.PublicKey,
-	})
-
-	return nil
+	return err
 }
 
 func (z *zbft) broadcast(msg zbftpb.Message) {

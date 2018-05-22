@@ -123,6 +123,7 @@ func Test_Zbft_cluster(t *testing.T) {
 			bcpb.DataKey(fmt.Sprintf("test:%d", bcnt)),
 			[]byte(fmt.Sprintf("test:%d", bcnt)),
 		)
+		//txi.Sign(pk, sig)
 
 		tx1 := bcpb.NewTx()
 		tx1.AddInput(txi)
@@ -143,7 +144,10 @@ func Test_Zbft_cluster(t *testing.T) {
 
 	// Update
 	txi, err := tc[0].bc.NewTxInput(bcpb.DataKey("test:1"))
-	assert.Nil(t, err)
+	if err != nil {
+		t.Fatal(err)
+	}
+	//assert.Nil(t, err)
 	txi.AddArgs(
 		[]byte("dummy.update"),
 		[]byte("test:1-DATA"),
