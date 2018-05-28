@@ -30,7 +30,7 @@ func (z *zbft) handleBootstrap(msg zbftpb.Message) error {
 	signature, err := z.kp.Sign(msg.Block.Digest)
 	if err == nil {
 		pubkey := z.kp.PublicKey
-		err = z.inst.sign(pubkey, signature)
+		err = z.inst.sign(msg.Block.Digest, pubkey, signature)
 	}
 
 	return err

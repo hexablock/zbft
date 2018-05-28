@@ -153,16 +153,18 @@ func (tc testCluster) start() {
 	for {
 
 		select {
+
 		case msg := <-tc[0].BroadcastMessages():
 			tc.bcast(msg, 0)
+
 		case msg := <-tc[1].BroadcastMessages():
 			tc.bcast(msg, 1)
+
 		case msg := <-tc[2].BroadcastMessages():
 			tc.bcast(msg, 2)
+
 		case msg := <-tc[3].BroadcastMessages():
 			tc.bcast(msg, 3)
-			// case msg := <-tc[4].bcast:
-			// 	tc.bcast(msg, 4)
 
 		}
 	}

@@ -209,7 +209,7 @@ func (z *zbft) handleProposal(msg zbftpb.Message) error {
 	signature, err := z.kp.Sign(msg.Block.Digest)
 	if err == nil {
 		pubkey := z.kp.PublicKey
-		err = z.inst.sign(pubkey, signature)
+		err = z.inst.sign(msg.Block.Digest, pubkey, signature)
 	}
 
 	return err
@@ -222,14 +222,23 @@ func (z *zbft) handleSignature(msg zbftpb.Message) error {
 
 	// Make sure the same block is being ratified as the one in the request
 	blk := msg.Block
-	if !blk.Digest.Equal(z.inst.block.Digest) {
-		return errInvalidBlockDigest
+	digest := blk.Digest
+
+	if blk.Header == nil {
+		return errors.New("block header missing")
 	}
 
+	if len(blk.Header.Signers) != 1 {
+		return fmt.Errorf("signers missing")
+	}
 	signer := blk.Header.Signers[0]
+
+	if len(blk.Signatures) != 1 {
+		return fmt.Errorf("no signatures in block")
+	}
 	signature := blk.Signatures[0]
 
-	err := z.inst.sign(signer, signature)
+	err := z.inst.sign(digest, signer, signature)
 
 	z.log.Debugf("[%x] Signed: signer=%x sig=%x err='%v'",
 		z.kp.PublicKey[:8], signer[:8], signature[:8], err)

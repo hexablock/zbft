@@ -43,7 +43,7 @@ func Test_zbft_errors(t *testing.T) {
 		Block: &bcpb.Block{}}
 
 	err = tc.handleMessage(tm)
-	assert.Equal(t, errInvalidBlockDigest, err)
+	assert.NotNil(t, err)
 
 }
 
@@ -147,7 +147,6 @@ func Test_Zbft_cluster(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	//assert.Nil(t, err)
 	txi.AddArgs(
 		[]byte("dummy.update"),
 		[]byte("test:1-DATA"),
@@ -162,7 +161,7 @@ func Test_Zbft_cluster(t *testing.T) {
 	// Check result
 	rslt, err := tc[1].bc.GetTXOByDataKey(bcpb.DataKey("test:1"))
 	assert.Nil(t, err)
-	assert.Equal(t, []byte("test:1-DATA"), rslt.Data)
+	assert.Equal(t, "test:1-DATA", string(rslt.Data))
 
 	// Check contract
 	// r, _ := tc[2].cnct.m["test:1"]

@@ -1,8 +1,6 @@
 package zbft
 
 import (
-	"log"
-
 	"github.com/hexablock/blockchain/bcpb"
 )
 
@@ -73,7 +71,10 @@ func (inst *instance) init(blk *bcpb.Block, txs []*bcpb.Tx) {
 	inst.commits = make([]uint8, len(blk.Header.Signers))
 }
 
-func (inst *instance) sign(pubkey bcpb.PublicKey, signature []byte) error {
+func (inst *instance) sign(digest bcpb.Digest, pubkey bcpb.PublicKey, signature []byte) error {
+	if !digest.Equal(inst.block.Digest) {
+		return errInvalidBlockDigest
+	}
 	// Add public key and signature to the block
 	err := inst.block.Sign(pubkey, signature)
 	if err != nil {
@@ -96,9 +97,6 @@ func (inst *instance) sign(pubkey bcpb.PublicKey, signature []byte) error {
 			inst.state = stateCommitting
 			err = inst.onCommitEnter(b, inst.txs)
 		}
-
-	default:
-		log.Printf("Sign in %v", inst.state)
 
 	}
 

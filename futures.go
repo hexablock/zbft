@@ -49,9 +49,12 @@ func (a *Future) Ratified(timeout time.Duration) error {
 	)
 
 	select {
+
 	case err = <-a.ratified:
+
 	case <-tmr.C:
 		err = errTimedOut
+
 	}
 
 	return err
@@ -65,9 +68,12 @@ func (a *Future) Executed(timeout time.Duration) error {
 	)
 
 	select {
+
 	case err = <-a.execd:
+
 	case <-tmr.C:
 		err = errTimedOut
+
 	}
 
 	return err
